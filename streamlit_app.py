@@ -7,117 +7,93 @@ import plotly.graph_objects as go
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('data/raspberrypi_telematics_dataset.csv')
-        # Clean and process data
+        df = pd.read_csv('data/enhanced_telematics_dataset.csv')
         df['timestamp'] = pd.to_datetime(df['timestamp'])
-        numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
-                        'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
-                        'head_position_X', 'eye_closed_duration']
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        categorical_cols = ['driver_state', 'vehicle_health', 'vehicle_type']
-        for col in categorical_cols:
-            df[col] = df[col].astype(str).str.lower()
         df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
         return df
     except FileNotFoundError:
-        st.error("CSV file 'data/raspberrypi_telematics_dataset.csv' not found. Please ensure it is in the same directory as this script.")
+        st.error("CSV file 'data/enhanced_telematics_dataset.csv' not found.")
         return pd.DataFrame()
 
 # Set page title and layout
 st.set_page_config(page_title="Telematics Dashboard", layout="wide")
-st.title("🚗 Telematics Dashboard")
+st.title("\U0001F697 Telematics Dashboard")
 
 # Load data
 df = load_data()
 if df.empty:
     st.stop()
 
-# Sidebar for filters
+# Sidebar filters
 st.sidebar.header("Filters")
 vehicle_types = df['vehicle_type'].unique()
-selected_vehicle_type = st.sidebar.multiselect("Select Vehicle Type", vehicle_types, default=vehicle_types)
-filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
+selected_vehicle_type = st.sidebar.multiselect("Vehicle Type", vehicle_types, default=vehicle_types)
+trip_ids = df['trip_id'].unique()
+selected_trip_ids = st.sidebar.multiselect("Trip IDs", trip_ids, default=trip_ids)
+filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type) & df['trip_id'].isin(selected_trip_ids)]
 
-# Overview Section
+# Overview Metrics
 st.header("Overview")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    st.metric("Total Trips", len(filtered_df))
+    st.metric("Total Trips", len(filtered_df['trip_id'].unique()))
 with col2:
     st.metric("Avg Speed (km/h)", f"{filtered_df['speed'].mean():.2f}")
 with col3:
-    st.metric("Avg Fuel Level (%)", f"{filtered_df['fuel_level'].mean():.2f}")
+    st.metric("Speeding Events", int(filtered_df['speeding_flag'].sum()))
 with col4:
-    drowsy_pct = (filtered_df['driver_state'] == 'drowsy').mean() * 100
-    st.metric("Drowsy Drivers (%)", f"{drowsy_pct:.2f}")
+    st.metric("Harsh Braking Events", int(filtered_df['harsh_braking'].sum()))
+with col5:
+    st.metric("Avg Fatigue Score", f"{filtered_df['fatigue_score'].mean():.2f}")
 
 # Map Visualization
 st.header("Vehicle Locations")
 if not filtered_df.empty:
-    st.map(filtered_df[['latitude', 'longitude']].dropna())
+    st.map(filtered_df[['latitude', 'longitude']])
 else:
     st.write("No location data available.")
 
-# Time-Series Analysis
-st.header("Vehicle Metrics Over Time")
-metric_options = ['speed', 'fuel_level', 'engine_temp']
+# Time-Series Metrics
+st.header("Metrics Over Time")
+metric_options = ['speed', 'fuel_level', 'engine_temp', 'fatigue_score']
 selected_metric = st.selectbox("Select Metric", metric_options)
-fig_time = px.line(filtered_df, x='timestamp', y=selected_metric, color='vehicle_type',
-                   title=f"{selected_metric.capitalize()} Over Time")
-fig_time.update_layout(xaxis_title="Timestamp", yaxis_title=selected_metric.capitalize())
-st.plotly_chart(fig_time, use_container_width=True)
+fig_metric = px.line(filtered_df, x='timestamp', y=selected_metric, color='vehicle_type',
+                     title=f"{selected_metric.replace('_', ' ').capitalize()} Over Time")
+st.plotly_chart(fig_metric, use_container_width=True)
 
-# Driver Behavior Analysis
-st.header("Driver Behavior")
+# Driver Behavior
+st.header("Driver Behavior Analysis")
 col1, col2 = st.columns(2)
 with col1:
-    driver_state_counts = filtered_df['driver_state'].value_counts().reset_index()
-    driver_state_counts.columns = ['driver_state', 'count']
-    fig_driver = px.bar(driver_state_counts, x='driver_state', y='count',
-                        title="Driver State Distribution",
-                        color='driver_state', color_discrete_sequence=px.colors.qualitative.Plotly)
-    st.plotly_chart(fig_driver, use_container_width=True)
+    state_counts = filtered_df['driver_state'].value_counts().reset_index()
+    state_counts.columns = ['driver_state', 'count']
+    fig_state = px.bar(state_counts, x='driver_state', y='count',
+                       title="Driver State Distribution")
+    st.plotly_chart(fig_state, use_container_width=True)
 with col2:
-    fig_eye = px.scatter(filtered_df, x='eye_closed_duration', y='driver_state',
-                         color='driver_state', title="Eye Closed Duration vs Driver State",
-                         hover_data=['timestamp', 'vehicle_type'])
-    risky_df = filtered_df[filtered_df['eye_closed_duration'] > 2.5]
-    if not risky_df.empty:
-        fig_eye.add_trace(go.Scatter(x=risky_df['eye_closed_duration'], y=risky_df['driver_state'],
-                                     mode='markers', marker=dict(color='red', size=10, symbol='x'),
-                                     name='Risky (>2.5s)'))
-    st.plotly_chart(fig_eye, use_container_width=True)
-    st.write(f"**Insight**: {len(risky_df)} instances where eye closed duration > 2.5s, indicating potential risk.")
+    fig_fatigue = px.histogram(filtered_df, x='fatigue_score', nbins=20, title="Fatigue Score Distribution")
+    st.plotly_chart(fig_fatigue, use_container_width=True)
 
 # Vehicle Health Monitoring
-st.header("Vehicle Health")
-col1, col2 = st.columns(2)
-with col1:
-    health_counts = filtered_df['vehicle_health'].value_counts().reset_index()
-    health_counts.columns = ['vehicle_health', 'count']
-    fig_health = px.pie(health_counts, names='vehicle_health', values='count',
-                        title="Vehicle Health Status")
-    st.plotly_chart(fig_health, use_container_width=True)
-with col2:
-    fig_temp = px.line(filtered_df, x='timestamp', y='engine_temp', color='vehicle_type',
-                       title="Engine Temperature Over Time")
-    fig_temp.add_hline(y=120, line_dash="dash", line_color="red", annotation_text="Overheating Threshold (120°C)")
-    overheating_count = (filtered_df['engine_temp'] > 120).sum()
-    st.plotly_chart(fig_temp, use_container_width=True)
-    st.write(f"**Insight**: {overheating_count} instances of engine temperature > 120°C.")
+st.header("Vehicle Health Status")
+health_counts = filtered_df['vehicle_health'].value_counts().reset_index()
+health_counts.columns = ['vehicle_health', 'count']
+fig_health = px.pie(health_counts, names='vehicle_health', values='count', title="Vehicle Health")
+st.plotly_chart(fig_health, use_container_width=True)
+
+# Engine Overheating
+overheating_count = filtered_df['engine_overheat'].sum()
+fig_temp = px.line(filtered_df, x='timestamp', y='engine_temp', color='vehicle_type',
+                   title="Engine Temperature Over Time")
+fig_temp.add_hline(y=110, line_dash="dash", line_color="red", annotation_text="Overheat Threshold")
+st.plotly_chart(fig_temp, use_container_width=True)
+st.write(f"**Insight**: {overheating_count} overheating events detected (temp > 110°C).")
 
 # Accelerometer Insights
-st.header("Accelerometer Readings")
+st.header("Accelerometer Insights")
 fig_accel = px.line(filtered_df, x='timestamp', y=['accelerometer_x', 'accelerometer_y', 'accelerometer_z'],
                     title="Accelerometer Readings Over Time")
-fig_accel.add_hline(y=2.5, line_dash="dash", line_color="orange", annotation_text="High Acceleration Threshold")
-fig_accel.add_hline(y=-2.5, line_dash="dash", line_color="orange")
-high_accel = filtered_df[(filtered_df['accelerometer_x'].abs() > 2.5) |
-                         (filtered_df['accelerometer_y'].abs() > 2.5) |
-                         (filtered_df['accelerometer_z'].abs() > 2.5)]
 st.plotly_chart(fig_accel, use_container_width=True)
-st.write(f"**Insight**: {len(high_accel)} high acceleration events detected (|x|, |y|, or |z| > 2.5), indicating potential harsh braking or sharp turns.")
 
 # Raw Data Table
 st.header("Raw Data")
@@ -125,4 +101,4 @@ st.dataframe(filtered_df)
 
 # Footer
 st.markdown("---")
-st.write("Built with Streamlit, Pandas, and Plotly. Data source: Raspberry Pi telematics dataset.")
+st.write("Built with Streamlit, Plotly, and Pandas. Data source: Enhanced Telematics Dataset.")
