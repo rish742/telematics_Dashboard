@@ -1,151 +1,128 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import plotly.express as px
+import plotly.graph_objects as go
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
-
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
-
+# Load the dataset
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def load_data():
+    try:
+        df = pd.read_csv('data\synthetic_telematics_dataset.csv')
+        # Clean and process data
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
+                        'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
+                        'head_position_X', 'eye_closed_duration']
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        categorical_cols = ['driver_state', 'vehicle_health', 'vehicle_type']
+        for col in categorical_cols:
+            df[col] = df[col].astype(str).str.lower()
+        df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
+        return df
+    except FileNotFoundError:
+        st.error("CSV file 'raspberrypi_telematics_dataset.csv' not found. Please ensure it is in the same directory as this script.")
+        return pd.DataFrame()
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+# Set page title and layout
+st.set_page_config(page_title="Telematics Dashboard", layout="wide")
+st.title("🚗 Telematics Dashboard")
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# Load data
+df = load_data()
+if df.empty:
+    st.stop()
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# Sidebar for filters
+st.sidebar.header("Filters")
+vehicle_types = df['vehicle_type'].unique()
+selected_vehicle_type = st.sidebar.multiselect("Select Vehicle Type", vehicle_types, default=vehicle_types)
+filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+# Overview Section
+st.header("Overview")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Total Trips", len(filtered_df))
+with col2:
+    st.metric("Avg Speed (km/h)", f"{filtered_df['speed'].mean():.2f}")
+with col3:
+    st.metric("Avg Fuel Level (%)", f"{filtered_df['fuel_level'].mean():.2f}")
+with col4:
+    drowsy_pct = (filtered_df['driver_state'] == 'drowsy').mean() * 100
+    st.metric("Drowsy Drivers (%)", f"{drowsy_pct:.2f}")
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+# Map Visualization
+st.header("Vehicle Locations")
+if not filtered_df.empty:
+    st.map(filtered_df[['latitude', 'longitude']].dropna())
+else:
+    st.write("No location data available.")
 
-    return gdp_df
+# Time-Series Analysis
+st.header("Vehicle Metrics Over Time")
+metric_options = ['speed', 'fuel_level', 'engine_temp']
+selected_metric = st.selectbox("Select Metric", metric_options)
+fig_time = px.line(filtered_df, x='timestamp', y=selected_metric, color='vehicle_type',
+                   title=f"{selected_metric.capitalize()} Over Time")
+fig_time.update_layout(xaxis_title="Timestamp", yaxis_title=selected_metric.capitalize())
+st.plotly_chart(fig_time, use_container_width=True)
 
-gdp_df = get_gdp_data()
+# Driver Behavior Analysis
+st.header("Driver Behavior")
+col1, col2 = st.columns(2)
+with col1:
+    driver_state_counts = filtered_df['driver_state'].value_counts().reset_index()
+    driver_state_counts.columns = ['driver_state', 'count']
+    fig_driver = px.bar(driver_state_counts, x='driver_state', y='count',
+                        title="Driver State Distribution",
+                        color='driver_state', color_discrete_sequence=px.colors.qualitative.Plotly)
+    st.plotly_chart(fig_driver, use_container_width=True)
+with col2:
+    fig_eye = px.scatter(filtered_df, x='eye_closed_duration', y='driver_state',
+                         color='driver_state', title="Eye Closed Duration vs Driver State",
+                         hover_data=['timestamp', 'vehicle_type'])
+    risky_df = filtered_df[filtered_df['eye_closed_duration'] > 2.5]
+    if not risky_df.empty:
+        fig_eye.add_trace(go.Scatter(x=risky_df['eye_closed_duration'], y=risky_df['driver_state'],
+                                     mode='markers', marker=dict(color='red', size=10, symbol='x'),
+                                     name='Risky (>2.5s)'))
+    st.plotly_chart(fig_eye, use_container_width=True)
+    st.write(f"**Insight**: {len(risky_df)} instances where eye closed duration > 2.5s, indicating potential risk.")
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+# Vehicle Health Monitoring
+st.header("Vehicle Health")
+col1, col2 = st.columns(2)
+with col1:
+    health_counts = filtered_df['vehicle_health'].value_counts().reset_index()
+    health_counts.columns = ['vehicle_health', 'count']
+    fig_health = px.pie(health_counts, names='vehicle_health', values='count',
+                        title="Vehicle Health Status")
+    st.plotly_chart(fig_health, use_container_width=True)
+with col2:
+    fig_temp = px.line(filtered_df, x='timestamp', y='engine_temp', color='vehicle_type',
+                       title="Engine Temperature Over Time")
+    fig_temp.add_hline(y=120, line_dash="dash", line_color="red", annotation_text="Overheating Threshold (120°C)")
+    overheating_count = (filtered_df['engine_temp'] > 120).sum()
+    st.plotly_chart(fig_temp, use_container_width=True)
+    st.write(f"**Insight**: {overheating_count} instances of engine temperature > 120°C.")
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+# Accelerometer Insights
+st.header("Accelerometer Readings")
+fig_accel = px.line(filtered_df, x='timestamp', y=['accelerometer_x', 'accelerometer_y', 'accelerometer_z'],
+                    title="Accelerometer Readings Over Time")
+fig_accel.add_hline(y=2.5, line_dash="dash", line_color="orange", annotation_text="High Acceleration Threshold")
+fig_accel.add_hline(y=-2.5, line_dash="dash", line_color="orange")
+high_accel = filtered_df[(filtered_df['accelerometer_x'].abs() > 2.5) |
+                         (filtered_df['accelerometer_y'].abs() > 2.5) |
+                         (filtered_df['accelerometer_z'].abs() > 2.5)]
+st.plotly_chart(fig_accel, use_container_width=True)
+st.write(f"**Insight**: {len(high_accel)} high acceleration events detected (|x|, |y|, or |z| > 2.5), indicating potential harsh braking or sharp turns.")
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+# Raw Data Table
+st.header("Raw Data")
+st.dataframe(filtered_df)
 
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# Footer
+st.markdown("---")
+st.write("Built with Streamlit, Pandas, and Plotly. Data source: Raspberry Pi telematics dataset.")
