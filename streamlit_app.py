@@ -2,20 +2,26 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from supabase import create_client, Client
 
-# Load the dataset
+# ---- Supabase Configuration ----
+SUPABASE_URL = st.secrets["supabase"]["url"]
+SUPABASE_KEY = st.secrets["supabase"]["key"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('data/enhanced_telematics_dataset.csv')
+        response = supabase.table("telematics").select("*").execute()
+        df = pd.DataFrame(response.data)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
         return df
-    except FileNotFoundError:
-        st.error("CSV file 'data/enhanced_telematics_dataset.csv' not found.")
+    except Exception as e:
+        st.error(f"Failed to fetch data from Supabase: {e}")
         return pd.DataFrame()
 
-# Set page title and layout
+# ---- Streamlit UI Configuration ----
 st.set_page_config(page_title="Telematics Dashboard", layout="wide")
 st.title("\U0001F697 Telematics Dashboard")
 
@@ -67,8 +73,7 @@ col1, col2 = st.columns(2)
 with col1:
     state_counts = filtered_df['driver_state'].value_counts().reset_index()
     state_counts.columns = ['driver_state', 'count']
-    fig_state = px.bar(state_counts, x='driver_state', y='count',
-                       title="Driver State Distribution")
+    fig_state = px.bar(state_counts, x='driver_state', y='count', title="Driver State Distribution")
     st.plotly_chart(fig_state, use_container_width=True)
 with col2:
     fig_fatigue = px.histogram(filtered_df, x='fatigue_score', nbins=20, title="Fatigue Score Distribution")
@@ -101,4 +106,4 @@ st.dataframe(filtered_df)
 
 # Footer
 st.markdown("---")
-st.write("Built with Streamlit, Plotly, and Pandas. Data source: Enhanced Telematics Dataset.")
+st.write("Built with Streamlit, Plotly, and Pandas. Data source: Supabase → Telematics Table")
