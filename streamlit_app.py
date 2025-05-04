@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('data/synthetic_telematics_dataset.csv')
+        df = pd.read_csv('data/raspberrypi_telematics_dataset.csv')
         # Clean and process data
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
@@ -21,7 +21,7 @@ def load_data():
         df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
         return df
     except FileNotFoundError:
-        st.error("CSV file 'data\synthetic_telematics_dataset.csv' not found. Please ensure it is in the same directory as this script.")
+        st.error("CSV file 'data/raspberrypi_telematics_dataset.csv' not found. Please ensure it is in the same directory as this script.")
         return pd.DataFrame()
 
 # Set page title and layout
