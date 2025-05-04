@@ -4,36 +4,31 @@ import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client, Client
 
-# Load Supabase credentials from Streamlit secrets
-SUPABASE_URL = st.secrets["supabase"]["url"]
-SUPABASE_KEY = st.secrets["supabase"]["key"]
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Load the dataset from Supabase
+# Load data from Supabase
 @st.cache_data
 def load_data():
-    try:
-        response = supabase.table("telematics").select("*").execute()
-        df = pd.DataFrame(response.data)
-        # Clean and process data
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
-                        'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
-                        'head_position_X', 'eye_closed_duration']
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        categorical_cols = ['driver_state', 'vehicle_health', 'vehicle_type']
-        for col in categorical_cols:
-            df[col] = df[col].astype(str).str.lower()
-        df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
-        return df
-    except Exception as e:
-        st.error(f"Failed to load data from Supabase: {e}")
-        return pd.DataFrame()
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    supabase: Client = create_client(url, key)
+    response = supabase.table("telematics").select("*").execute()
+    df = pd.DataFrame(response.data)
+
+    # Clean and process data
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
+                    'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
+                    'head_direction', 'head_tilt', 'eye_closed_duration']
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    categorical_cols = ['driver_state', 'vehicle_health', 'vehicle_type']
+    for col in categorical_cols:
+        df[col] = df[col].astype(str).str.lower()
+    df = df.dropna(subset=['timestamp', 'latitude', 'longitude'])
+    return df
 
 # Set page title and layout
 st.set_page_config(page_title="Telematics Dashboard", layout="wide")
-st.title("\U0001F697 Telematics Dashboard")
+st.title("🚗 Telematics Dashboard")
 
 # Load data
 df = load_data()
@@ -132,4 +127,4 @@ st.dataframe(filtered_df)
 
 # Footer
 st.markdown("---")
-st.write("Built with Streamlit, Supabase, Pandas, and Plotly. Data source: Supabase 'telematics' table.")
+st.write("Built with Streamlit, Pandas, and Plotly. Data source: Supabase telematics dataset.")
