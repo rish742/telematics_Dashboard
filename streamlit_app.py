@@ -39,13 +39,13 @@ if df.empty:
 st.sidebar.header("Filters")
 vehicle_types = df['vehicle_type'].unique()
 selected_vehicle_type = st.sidebar.multiselect("Select Vehicle Type", vehicle_types, default=vehicle_types)
-filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
 
 # Manual data refresh button
 if st.sidebar.button("🔄 Refresh Now"):
     st.cache_data.clear()
     st.experimental_rerun()
 
+filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
 
 
 # Overview Section
