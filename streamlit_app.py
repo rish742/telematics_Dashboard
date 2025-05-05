@@ -41,6 +41,13 @@ vehicle_types = df['vehicle_type'].unique()
 selected_vehicle_type = st.sidebar.multiselect("Select Vehicle Type", vehicle_types, default=vehicle_types)
 filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
 
+# Manual data refresh button
+if st.sidebar.button("🔄 Refresh Now"):
+    st.cache_data.clear()
+    st.experimental_rerun()
+
+
+
 # Overview Section
 st.header("Overview")
 col1, col2, col3, col4 = st.columns(4)
