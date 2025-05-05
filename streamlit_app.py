@@ -44,7 +44,7 @@ selected_vehicle_type = st.sidebar.multiselect("Select Vehicle Type", vehicle_ty
 # Manual data refresh button
 if st.sidebar.button("🔄 Refresh Now"):
     st.cache_data.clear()
-    st.experimental_set_query_params(refresh=str(time.time()))
+    st.query_params.update({"refresh": str(time.time())})
 
 filtered_df = df[df['vehicle_type'].isin(selected_vehicle_type)]
 
