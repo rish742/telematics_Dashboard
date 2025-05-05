@@ -22,7 +22,7 @@ def load_data():
     df = df.sort_values("timestamp")
 
     # Clean and process data
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601', errors='coerce')
     numeric_cols = ['latitude', 'longitude', 'speed', 'fuel_level', 'engine_temp',
                     'accelerometer_x', 'accelerometer_y', 'accelerometer_z',
                     'head_direction', 'head_tilt', 'eye_closed_duration']
