@@ -11,8 +11,15 @@ def load_data():
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
     supabase: Client = create_client(url, key)
-    response = supabase.table("telematics").select("*").execute()
+
+    response = supabase.table("telematics") \
+        .select("*") \
+        .order("timestamp", desc=True) \
+        .limit(500) \
+        .execute()
+
     df = pd.DataFrame(response.data)
+    df = df.sort_values("timestamp")
 
     # Clean and process data
     df['timestamp'] = pd.to_datetime(df['timestamp'])
