@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from supabase import create_client, Client
 
 # Load data from Supabase
-@st.cache_data
+@st.cache_data(ttl=10)
 def load_data():
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
