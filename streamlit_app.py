@@ -15,7 +15,7 @@ def load_data():
     response = supabase.table("telematics") \
         .select("*") \
         .order("timestamp", desc=True) \
-        .limit(500) \
+        .limit(1000) \
         .execute()
 
     df = pd.DataFrame(response.data)
